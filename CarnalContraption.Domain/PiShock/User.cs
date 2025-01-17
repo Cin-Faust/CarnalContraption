@@ -1,3 +1,10 @@
-﻿namespace CarnalContraption.Domain.PiShock;
+﻿using CarnalContraption.Domain.Users;
 
-public record User(ulong Id, string Name, string ApiKey, string Code);
+namespace CarnalContraption.Domain.PiShock;
+
+public class User(UserId id, Username name, ApiKey apiKey, ShareCode shareCode) : ExternalUser(id)
+{
+    public Username Name { get; } = name;
+    public ApiKey ApiKey { get; } = apiKey;
+    public ShareCode ShareCode { get; } = shareCode;
+}

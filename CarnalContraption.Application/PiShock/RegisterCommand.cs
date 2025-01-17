@@ -1,23 +1,30 @@
-﻿using ErrorOr;
-using MediatR;
-using System.Text.Json;
+﻿using CarnalContraption.Application.Storage.PiShock;
 using CarnalContraption.Domain.PiShock;
+using ErrorOr;
+using MediatR;
+using CarnalContraption.Domain.Users;
 
 namespace CarnalContraption.Application.PiShock;
 
 public record RegisterCommand(ulong TargetUserId, string Username, string ApiKey, string Code) : IRequest<ErrorOr<Success>>;
 
-internal class RegisterCommandHandler : IRequestHandler<RegisterCommand, ErrorOr<Success>>
+internal class RegisterCommandHandler(IUserRepository userRepository) : IRequestHandler<RegisterCommand, ErrorOr<Success>>
 {
     public async Task<ErrorOr<Success>> Handle(RegisterCommand request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Username)) return Error.Validation(description: "Username cannot be empty.");
-        if (string.IsNullOrWhiteSpace(request.ApiKey)) return Error.Validation(description: "ApiKey cannot be empty.");
-        if (string.IsNullOrWhiteSpace(request.Code)) return Error.Validation(description: "Code cannot be empty.");
+        var userIdResult = UserId.Create(request.TargetUserId);
+        if (userIdResult.IsError) return userIdResult.Errors;
 
-        var users = JsonSerializer.Deserialize<List<User>>(await File.ReadAllTextAsync("users.json", cancellationToken)) ?? [];
-        users.Add(new User(request.TargetUserId, request.Username, request.ApiKey, request.Code));
-        await File.WriteAllTextAsync("users.json",JsonSerializer.Serialize(users), cancellationToken);
-        return new Success();
+        var usernameResult = Username.Create(request.Username);
+        if(usernameResult.IsError) return usernameResult.Errors;
+
+        var apiKeyResult = ApiKey.Create(request.ApiKey);
+        if(apiKeyResult.IsError) return apiKeyResult.Errors;
+
+        var shareCodeResult = ShareCode.Create(request.Code);
+        if(shareCodeResult.IsError) return shareCodeResult.Errors;
+
+        var user = new User(userIdResult.Value, usernameResult.Value, apiKeyResult.Value, shareCodeResult.Value);
+        return await userRepository.CreateAsync(user);
     }
 }

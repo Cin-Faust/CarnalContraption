@@ -1,4 +1,5 @@
-﻿using CarnalContraption.Application.Extensions;
+﻿using System.Data;
+using CarnalContraption.Application.Extensions;
 using CarnalContraption.Bot.Discord.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,6 +10,7 @@ using Discord.Interactions;
 using Discord.Rest;
 using Discord.WebSocket;
 using CarnalContraption.Application.Services.Lovense;
+using MySql.Data.MySqlClient;
 
 namespace CarnalContraption.Bot.Discord;
 
@@ -23,6 +25,7 @@ internal class Program(
 {
     private readonly DiscordSettings _settings = settings.Value;
     private const string ConfigurationFilePath = "appsettings.json";
+    private const string ConnectionStringDefault = "Default";
     private const string ConfigurationSectionPiShock = "PiShock";
     private const string ConfigurationSectionLovense = "Lovense";
     private const string ConfigurationSectionDiscord = "Discord";
@@ -35,7 +38,7 @@ internal class Program(
 
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddLogging(loggingBuilder => loggingBuilder.AddConsole());
-
+        serviceCollection.AddSingleton<IDbConnection>(new MySqlConnection(configuration.GetConnectionString(ConnectionStringDefault)));
         serviceCollection.AddSingleton<HttpClient>();
         serviceCollection.Configure<Application.Services.PiShock.Settings>(configuration.GetSection(ConfigurationSectionPiShock));
         serviceCollection.Configure<Application.Services.Lovense.Settings>(configuration.GetSection(ConfigurationSectionLovense));
@@ -68,7 +71,7 @@ internal class Program(
 
             interactionService.Log += OnLog;
             interactionService.SlashCommandExecuted += OnSlashCommandExecuted;
-            lovenseService.Connect += OnConnect;
+            lovenseService.OnConnect += OnConnect;
 
             await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
 
