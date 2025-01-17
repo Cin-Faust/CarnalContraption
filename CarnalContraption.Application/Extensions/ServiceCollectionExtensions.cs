@@ -12,6 +12,7 @@ public static class ServiceCollectionExtensions
     {
         serviceCollection.AddSingleton<IHttpApiClient, HttpApiClient>();
         serviceCollection.AddSingleton<IUserRepository, UserRepository>();
+        serviceCollection.AddSingleton<IGuildUserRepository, GuildUserRepository>();
         serviceCollection.AddSingleton<IClient, Client>();
         serviceCollection.AddSingleton<ILovenseService, LovenseService>();
         serviceCollection.AddMediatR(serviceConfiguration => serviceConfiguration.RegisterServicesFromAssembly(typeof(ServiceCollectionExtensions).Assembly));
