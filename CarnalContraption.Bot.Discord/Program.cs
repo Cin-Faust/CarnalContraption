@@ -1,187 +1,135 @@
-﻿using CarnalContraption.Domain.Lovense;
+﻿using CarnalContraption.Application.Extensions;
+using CarnalContraption.Bot.Discord.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Discord;
+using Discord.Interactions;
+using Discord.Rest;
 using Discord.WebSocket;
-using System.Net.Sockets;
+using CarnalContraption.Application.Services.Lovense;
 
 namespace CarnalContraption.Bot.Discord;
 
-internal class Program
+internal class Program(
+    ILogger<Program> logger,
+    DiscordSocketClient discordSocketClient,
+    InteractionService interactionService,
+    ILovenseService lovenseService,
+    IServiceProvider serviceProvider,
+    IOptions<DiscordSettings> settings
+)
 {
-    private readonly ILogger<Program> _logger;
-    private readonly Settings _settings;
-    private readonly DiscordSocketClient _discordClient;
-    private readonly LovenseClient _lovenseClient;
+    private readonly DiscordSettings _settings = settings.Value;
+    private const string ConfigurationFilePath = "appsettings.json";
+    private const string ConfigurationSectionPiShock = "PiShock";
+    private const string ConfigurationSectionLovense = "Lovense";
+    private const string ConfigurationSectionDiscord = "Discord";
 
-    private static void Main()
+    private static async Task Main()
     {
         var configurationBuilder = new ConfigurationBuilder();
-        configurationBuilder.AddJsonFile("appsettings.json");
+        configurationBuilder.AddJsonFile(ConfigurationFilePath);
         var configuration = configurationBuilder.Build();
 
         var serviceCollection = new ServiceCollection();
         serviceCollection.AddLogging(loggingBuilder => loggingBuilder.AddConsole());
 
-        //Bot
-        serviceCollection.Configure<Settings>(configuration.GetSection("Discord"));
-        serviceCollection.AddSingleton<DiscordSocketClient>();
-        serviceCollection.AddSingleton<Program>();
-
-        //Lovense
-        serviceCollection.Configure<Domain.Lovense.Settings>(configuration.GetSection("Lovense"));
         serviceCollection.AddSingleton<HttpClient>();
-        serviceCollection.AddSingleton<LovenseClient>();
+        serviceCollection.Configure<Application.Services.PiShock.Settings>(configuration.GetSection(ConfigurationSectionPiShock));
+        serviceCollection.Configure<Application.Services.Lovense.Settings>(configuration.GetSection(ConfigurationSectionLovense));
+        serviceCollection.AddApplication();
+
+        //Bot
+        serviceCollection.Configure<DiscordSettings>(configuration.GetSection(ConfigurationSectionDiscord));
+        serviceCollection.AddSingleton<DiscordSocketClient>();
+        serviceCollection.AddSingleton<IRestClientProvider>(provider => provider.GetRequiredService<DiscordSocketClient>());
+        serviceCollection.AddSingleton<InteractionService>();
+        serviceCollection.AddSingleton<Program>();
 
         var serviceProvider = serviceCollection.BuildServiceProvider();
 
-        var program = serviceProvider.GetService<Program>();
+        var program = serviceProvider.GetRequiredService<Program>();
 
-        program.RunAsync().Wait();
-    }
-
-    public Program(ILogger<Program> logger, DiscordSocketClient discordClient, LovenseClient lovenseClient, IOptions<Settings> settings)
-    {
-        _logger = logger;
-
-        _discordClient = discordClient;
-        _lovenseClient = lovenseClient;
-
-        _settings = settings.Value;
+        await program.RunAsync();
     }
 
     public async Task RunAsync()
     {
         try
         {
-            _discordClient.Connected += Connected;
-            _discordClient.Disconnected += Disconnected;
-            _discordClient.Ready += Ready;
-            _discordClient.SlashCommandExecuted += SlashCommandHandler;
-            await _discordClient.LoginAsync(TokenType.Bot, _settings.Token);
-            await _discordClient.StartAsync();
+            discordSocketClient.Log += OnLog;
+            discordSocketClient.Ready += OnReady;
+            discordSocketClient.InteractionCreated += OnInteractionCreated;
 
-            await Task.Delay(-1);
+            await discordSocketClient.LoginAsync(TokenType.Bot, _settings.Token);
+            await discordSocketClient.StartAsync();
+
+            interactionService.Log += OnLog;
+            interactionService.SlashCommandExecuted += OnSlashCommandExecuted;
+            lovenseService.Connect += OnConnect;
+
+            await interactionService.AddModulesAsync(typeof(Program).Assembly, serviceProvider);
+
+            await Task.Delay(Timeout.Infinite);
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, exception.Message);
+            logger.LogError(exception, exception.Message);
         }
     }
 
-    public async Task Connected()
+    private Task OnSlashCommandExecuted(SlashCommandInfo slashCommandInfo, IInteractionContext interactionContext, IResult result)
     {
-        _logger.LogInformation("Connected.");
+        var location = interactionContext.Guild is not null
+            ? $"{interactionContext.Guild.Name} ({interactionContext.Guild.Id}) #{interactionContext.Channel.Name} ({interactionContext.Channel.Id})"
+            : "private";
+
+        var commandName = slashCommandInfo.Module.IsSlashGroup
+            ? $"{slashCommandInfo.Module.SlashGroupName} {slashCommandInfo.Name}"
+            : slashCommandInfo.Name;
+
+        var parameters = string.Join(", ", slashCommandInfo.Parameters.Select(x => x.Name));
+        logger.LogInformation($"{interactionContext.User.Username} ({interactionContext.User.Id}) in {location} ran /{commandName} {parameters}");
+        return Task.CompletedTask;
     }
 
-    public async Task Disconnected(Exception exception)
+    private async Task OnConnect((ulong UserId, string QuickReadCodeUrl) arg)
     {
-        _logger.LogError(exception, "Disconnected.");
+        var user = discordSocketClient.GetUser(arg.UserId);
+        await user.SendMessageAsync(embed: new EmbedBuilder()
+            .WithColor(Color.Green)
+            .WithTitle("Lovense QR Code")
+            .WithDescription("Steps:\n1) Open the lovense app.\n2) Press the + icon in the top right corner.\n3) Select Scan QR.")
+            .WithImageUrl(arg.QuickReadCodeUrl)
+            .Build());
     }
 
-    public async Task Ready()
+    private async Task OnInteractionCreated(SocketInteraction socketInteraction)
     {
-        _logger.LogInformation("Ready.");
-        foreach (var clientGuild in _discordClient.Guilds)
+        var context = new SocketInteractionContext(discordSocketClient, socketInteraction);
+        await interactionService.ExecuteCommandAsync(context, serviceProvider);
+    }
+
+    private Task OnLog(LogMessage logMessage)
+    {
+        logger.Log(logMessage.Severity.ToLogLevel(), logMessage.Exception, logMessage.Message);
+        return Task.CompletedTask;
+    }
+
+    public async Task OnReady()
+    {
+        if (settings.Value.GuildIds == null)
         {
-            var guildCommand = new SlashCommandBuilder();
-            guildCommand.WithName("connect");
-            guildCommand.WithDescription($"Connect lovense.");
-            try
-            {
-                await clientGuild.CreateApplicationCommandAsync(guildCommand.Build());
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(exception, exception.Message);
-            }
-
-            guildCommand = new SlashCommandBuilder();
-            guildCommand.WithName("vibrate");
-            guildCommand.WithDescription($"Vibrates all connected toys.");
-            guildCommand.AddOption("user", ApplicationCommandOptionType.User, "The specific user.");
-            guildCommand.AddOption("intensity", ApplicationCommandOptionType.Integer, "How intense the vibration from 0-20.");
-            guildCommand.AddOption("duration", ApplicationCommandOptionType.Integer, "How long the vibration in seconds from 1-60.");
-
-            try
-            {
-                await clientGuild.CreateApplicationCommandAsync(guildCommand.Build());
-            }
-            catch (Exception exception)
-            {
-                _logger.LogError(exception, exception.Message);
-            }
+            await interactionService.RegisterCommandsGloballyAsync();
         }
-    }
-
-    private async Task SlashCommandHandler(SocketSlashCommand command)
-    {
-        _logger.LogInformation($"Command '{command.Data.Name}' executed by {(command.User.IsBot ? "Bot" : "User")} '{command.User.GlobalName}' ({command.User.Id}).");
-
-        try
+        else
         {
-            if (command.Data.Name.Equals("connect", StringComparison.OrdinalIgnoreCase))
+            foreach (var guildId in settings.Value.GuildIds)
             {
-                await command.RespondAsync($"Sending you your unique QR Code.");
-                var session = await _lovenseClient.ConnectUser(command.User.Id);
-                await command.User.SendMessageAsync($"To connect, scan your unique QR code in lovense. {session.QRCodeUrl}");
+                await interactionService.RegisterCommandsToGuildAsync(guildId);
             }
-            else if (command.Data.Name.Equals("vibrate", StringComparison.OrdinalIgnoreCase))
-            {
-                var intensity = 10;
-                var duration = 1;
-                SocketGuildUser? user = null;
-
-                foreach (var option in command.Data.Options)
-                {
-                    switch (option.Name)
-                    {
-                        case "intensity":
-                            int.TryParse(option.Value.ToString(), out intensity);
-                            break;
-                        case "duration":
-                            int.TryParse(option.Value.ToString(), out duration);
-                            break;
-                        case "user":
-                            user = option.Value as SocketGuildUser;
-                            break;
-                    }
-                }
-
-                if (intensity < 0) intensity = 0;
-                if (intensity > 20) intensity = 20;
-
-                if (duration < 1) duration = 1;
-                if (duration > 60) duration = 60;
-
-                if (user == null)
-                {
-                    await command.RespondAsync($"Vibrating all toys at intensity {intensity} for {duration} seconds.");
-                    foreach (var session in _lovenseClient.Sessions)
-                    {
-                        await session.VibrateAsync(intensity, duration);
-                    }
-                }
-                else
-                {
-                    var userSession = _lovenseClient.Sessions.FirstOrDefault(session => session.UserId == user.Id);
-                    if (userSession == null)
-                    {
-                        await command.RespondAsync($"User {user.DisplayName} is not connected.");
-                    }
-                    else
-                    {
-                        await command.RespondAsync($"Vibrating all {user.DisplayName} toys at intensity {intensity} for {duration} seconds.");
-                        await userSession.VibrateAsync(intensity, duration);
-                    }
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(exception, exception.Message);
         }
     }
 }

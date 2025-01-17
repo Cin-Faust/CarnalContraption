@@ -7,7 +7,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "CarnalContraption.Bot.Disco
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarnalContraption.Domain", "CarnalContraption.Domain\CarnalContraption.Domain.csproj", "{5ABF6B23-7108-4137-A561-DB5049733E71}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarnalContraption.Domain.Lovense", "CarnalContraption.Domain.Lovense\CarnalContraption.Domain.Lovense.csproj", "{DC9F8B4B-B187-405E-A4D7-738308071F23}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CarnalContraption.Application", "CarnalContraption.Application\CarnalContraption.Application.csproj", "{C6161758-4B44-44AE-9C7D-3BF22D6AF68A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -23,10 +23,10 @@ Global
 		{5ABF6B23-7108-4137-A561-DB5049733E71}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5ABF6B23-7108-4137-A561-DB5049733E71}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5ABF6B23-7108-4137-A561-DB5049733E71}.Release|Any CPU.Build.0 = Release|Any CPU
-		{DC9F8B4B-B187-405E-A4D7-738308071F23}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{DC9F8B4B-B187-405E-A4D7-738308071F23}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{DC9F8B4B-B187-405E-A4D7-738308071F23}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{DC9F8B4B-B187-405E-A4D7-738308071F23}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C6161758-4B44-44AE-9C7D-3BF22D6AF68A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6161758-4B44-44AE-9C7D-3BF22D6AF68A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6161758-4B44-44AE-9C7D-3BF22D6AF68A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6161758-4B44-44AE-9C7D-3BF22D6AF68A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
