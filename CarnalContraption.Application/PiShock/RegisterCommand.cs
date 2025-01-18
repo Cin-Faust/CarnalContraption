@@ -10,21 +10,29 @@ public record RegisterCommand(ulong UserId, string Username, string ApiKey, stri
 
 internal class RegisterCommandHandler(IUserRepository userRepository) : IRequestHandler<RegisterCommand, ErrorOr<Success>>
 {
-    public async Task<ErrorOr<Success>> Handle(RegisterCommand request, CancellationToken cancellationToken)
+    private const int None = 0;
+
+    public Task<ErrorOr<Success>> Handle(RegisterCommand request, CancellationToken cancellationToken)
+        => RegisterCommandToUser(request)
+            .ThenAsync(userRepository.CreateAsync);
+
+    private static ErrorOr<User> RegisterCommandToUser(RegisterCommand request)
     {
+        var errors = new List<Error>();
         var userIdResult = UserId.Create(request.UserId);
-        if (userIdResult.IsError) return userIdResult.Errors;
+        if (userIdResult.IsError) errors.AddRange(userIdResult.Errors);
 
         var usernameResult = Username.Create(request.Username);
-        if (usernameResult.IsError) return usernameResult.Errors;
+        if (usernameResult.IsError) errors.AddRange(usernameResult.Errors);
 
         var apiKeyResult = ApiKey.Create(request.ApiKey);
-        if (apiKeyResult.IsError) return apiKeyResult.Errors;
+        if (apiKeyResult.IsError) errors.AddRange(apiKeyResult.Errors);
 
         var shareCodeResult = ShareCode.Create(request.Code);
-        if (shareCodeResult.IsError) return shareCodeResult.Errors;
+        if (shareCodeResult.IsError) errors.AddRange(shareCodeResult.Errors);
 
-        var user = new User(userIdResult.Value, usernameResult.Value, apiKeyResult.Value, shareCodeResult.Value);
-        return await userRepository.CreateAsync(user);
+        return errors.Count == None
+            ? new User(userIdResult.Value, usernameResult.Value, apiKeyResult.Value, shareCodeResult.Value)
+            : errors;
     }
 }
